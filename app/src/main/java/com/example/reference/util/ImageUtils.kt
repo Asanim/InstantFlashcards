@@ -15,7 +15,7 @@
  *
  */
 
-package com.example.reference.util
+package com.google.mlkit.showcase.translate.util
 
 import android.graphics.Bitmap
 import android.graphics.ImageFormat
