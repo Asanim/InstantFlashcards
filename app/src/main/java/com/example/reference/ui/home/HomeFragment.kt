@@ -54,8 +54,10 @@ import androidx.camera.core.*
 import androidx.lifecycle.MutableLiveData
 
 import androidx.lifecycle.Observer
+import androidx.room.Room
 //import com.google.mlkit.showcase.translate.R
 import com.example.reference.analyzer.TextAnalyzer
+import com.example.reference.ui.slideshow.SlideshowFragment
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.showcase.translate.util.Language
 import com.google.mlkit.showcase.translate.util.ScopedExecutor
@@ -69,6 +71,7 @@ import java.io.File
 import java.io.InputStream
 import java.util.concurrent.Executor
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 //import kotlinx.android.synthetic.main.main_fragment.*
@@ -125,6 +128,8 @@ class HomeFragment : Fragment() {
 
     private var result = SmoothedMutableLiveData<String>(50L)
 
+    private var userDao: SlideshowFragment.UserDao? = null
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -158,6 +163,14 @@ class HomeFragment : Fragment() {
 //        pickFileButton.setOnClickListener {
 //            openFilePicker()
 //        }
+
+
+        val db = Room.databaseBuilder(
+            requireContext(),
+            SlideshowFragment.AppDatabase::class.java, "database-name"
+        ).build()
+
+        userDao = db.userDao()
 
         return root
 
@@ -392,11 +405,16 @@ class HomeFragment : Fragment() {
                     val fileName = "example.txt" // 文件名
                     val file = File(requireContext().dataDir, fileName)
                     file.writeText("Hello, World!") // 写入文本内容到文件
-
-
                     inputStream?.close()
 
-                    val msg = "Photo capture succeeded: ${output.savedUri}"
+                    val newUser = SlideshowFragment.User(
+                        pictureText = result.value,
+                        picture = bitmap,
+                        date = Date()
+                    )
+                    val insertedUid = userDao?.insert(newUser)
+
+                    val msg = "Photo capture succeeded: ${output.savedUri}, inserted ${insertedUid}"
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     Log.d(TAG, msg)
                 }
