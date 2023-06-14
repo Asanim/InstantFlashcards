@@ -44,18 +44,30 @@ import kotlin.math.min
 
 
 import android.graphics.*
+import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 
 import android.widget.ArrayAdapter
 import android.widget.Button
 import androidx.camera.core.*
+import androidx.lifecycle.MutableLiveData
 
 import androidx.lifecycle.Observer
 //import com.google.mlkit.showcase.translate.R
 import com.example.reference.analyzer.TextAnalyzer
+import com.google.android.gms.tasks.Task
 import com.google.mlkit.showcase.translate.util.Language
 import com.google.mlkit.showcase.translate.util.ScopedExecutor
+import com.google.mlkit.showcase.translate.util.SmoothedMutableLiveData
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import java.io.File
+import java.io.InputStream
+import java.util.concurrent.Executor
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -103,12 +115,15 @@ class HomeFragment : Fragment() {
     /** Blocking camera and inference operations are performed using this executor. */
     private lateinit var cameraExecutor: ExecutorService
 
+    private var detector : TextRecognizer? = null
+
     /** UI callbacks are run on this executor. */
     private lateinit var scopedExecutor: ScopedExecutor
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
+    private var result = SmoothedMutableLiveData<String>(50L)
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -156,7 +171,7 @@ class HomeFragment : Fragment() {
         // Initialize our background executor
         cameraExecutor = Executors.newCachedThreadPool()
         scopedExecutor = ScopedExecutor(cameraExecutor)
-
+        detector = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().setExecutor(cameraExecutor).build())
 
 
         viewModel.executor = cameraExecutor
@@ -353,12 +368,41 @@ class HomeFragment : Fragment() {
 
                 override fun
                         onImageSaved(output: ImageCapture.OutputFileResults){
+
+                    // here we are actually reading the image back from file...
+                    // TODO read the actual image not the save file OR move this to gallery to be read later...
+                    val imageUri: Uri? = output.savedUri
+
+                    val inputStream: InputStream? = imageUri?.let {
+                        requireContext().contentResolver.openInputStream(
+                            it
+                        )
+                    }
+                    val bitmap: Bitmap = BitmapFactory.decodeStream(inputStream)
+                    val rotationDegrees = 0 // you will need to calculate the correct rotation
+                    val image: InputImage = InputImage.fromBitmap(bitmap, rotationDegrees)
+
+                    recognizeTextOnDevice(image,
+                        successCallback = { text ->
+                            // 处理成功的结果
+                            result.setValue(text)
+                        }
+                    )
+
+                    val fileName = "example.txt" // 文件名
+                    val file = File(requireContext().dataDir, fileName)
+                    file.writeText("Hello, World!") // 写入文本内容到文件
+
+
+                    inputStream?.close()
+
                     val msg = "Photo capture succeeded: ${output.savedUri}"
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     Log.d(TAG, msg)
                 }
             }
         )
+
     }
 
 
@@ -450,6 +494,28 @@ class HomeFragment : Fragment() {
             }
         }
     }
+
+
+    private fun recognizeTextOnDevice(image: InputImage, successCallback: (String) -> Unit) {
+        detector?.process(image)
+            ?.addOnSuccessListener { visionText ->
+                // Task completed successfully
+                val text = visionText.text
+                Log.d(TAG, text)
+                Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+                successCallback.invoke(text)
+            }
+            ?.addOnFailureListener { exception ->
+                // Task failed with an exception
+                Log.e(TAG, "Text recognition error", exception)
+                val message = exception.message
+                message?.let {
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+//                    errorCallback.invoke(message)
+                }
+            } ?: throw IllegalStateException("Text recognition detector is null")
+    }
+
 
     /**
      * Check if all permission specified in the manifest have been granted
